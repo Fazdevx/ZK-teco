@@ -1457,7 +1457,7 @@ app.get('/api/data/dashboard', async (req, res) => {
 
     // Weekly trend (unique users per day)
     const weekAgoStart = dateStrToSchoolInstant(getDayKey(new Date(Date.now() - 7 * 86400000)), 0, 0);
-    const weekLogs = await fetchAllRows(() =>
+    let weekLogs = await fetchAllRows(() =>
       supabase.from('attendance_logs')
         .select('check_time, user_id')
         .gte('check_time', weekAgoStart.toISOString())

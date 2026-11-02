@@ -24,3 +24,6 @@ zk-backend/user_excuses.json
 
 .DS_Store
 Thumbs.db
+
+.vercel
+.env*
