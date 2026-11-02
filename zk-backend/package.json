@@ -1,0 +1,29 @@
+{
+  "name": "zk-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "extract-today": "node scripts/extract-today.js",
+    "clear-resync": "node scripts/clear-and-resync.js --yes",
+    "unlock-admin": "node scripts/unlock-admin.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "zk-attendance-sdk": "^2.3.0",
+    "zklib-ng": "^0.1.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

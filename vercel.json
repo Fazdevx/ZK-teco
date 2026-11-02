@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm install --prefix zk-backend --omit=dev && npm install --prefix zk-frontend --include=dev",
+  "buildCommand": "npm --prefix zk-frontend run build",
+  "outputDirectory": "zk-frontend/dist",
+  "trailingSlash": false,
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "zk-backend/*.json",
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/((?!api(/|$)).*)", "destination": "/index.html" }
+  ]
+}

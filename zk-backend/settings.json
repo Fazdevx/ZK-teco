@@ -1,0 +1,19 @@
+{
+  "lateHour": 7,
+  "lateMinute": 35,
+  "workStartHour": 7,
+  "workStartMinute": 0,
+  "workEndHour": 18,
+  "workEndMinute": 0,
+  "toleranceMinutes": 0,
+  "tzOffsetMinutes": -300,
+  "absenceAfterHour": 23,
+  "absenceAfterMinute": 0,
+  "saturdayLateHour": 8,
+  "saturdayLateMinute": 30,
+  "saturdayAbsenceAfterHour": 9,
+  "saturdayAbsenceAfterMinute": 0,
+  "autoSync": true,
+  "autoSyncInterval": 3,
+  "adminPassword": "admin123"
+}

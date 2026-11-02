@@ -1,0 +1,110 @@
+{
+  "name": "zk-teco-desktop",
+  "version": "1.3.5",
+  "description": "Sistema de asistencias ZK-teco — App de escritorio",
+  "main": "main.js",
+  "author": "ZK-teco",
+  "license": "ISC",
+  "scripts": {
+    "start": "electron .",
+    "icon": "node generate-icon.js",
+    "build:frontend": "cd ../zk-frontend && npm run build",
+    "dist": "npm run build:frontend && electron-builder --win --x64",
+    "dist:dir": "npm run build:frontend && electron-builder --win --x64 --dir"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.zkteco.asistencias",
+    "productName": "Asistencias Galileo",
+    "directories": {
+      "output": "../dist-desktop"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "icon.ico",
+      "generate-icon.js",
+      "!**/*.map",
+      "!**/*.md"
+    ],
+    "extraResources": [
+      {
+        "from": "../zk-backend",
+        "to": "zk-backend",
+        "filter": [
+          "**/*",
+          "!node_modules/.cache/**",
+          "!node_modules/**/test/**",
+          "!node_modules/**/__tests__/**",
+          "!node_modules/**/tests/**",
+          "!node_modules/**/powered-test/**",
+          "!node_modules/**/example/**",
+          "!node_modules/**/examples/**",
+          "!node_modules/**/*.md",
+          "!node_modules/**/*.map",
+          "!node_modules/**/README*",
+          "!node_modules/**/readme*",
+          "!node_modules/**/Readme*",
+          "!node_modules/**/CHANGELOG*",
+          "!node_modules/**/changelog*",
+          "!node_modules/**/HISTORY*",
+          "!node_modules/**/history*",
+          "!node_modules/**/.bin/**",
+          "!node_modules/**/.github/**",
+          "!node_modules/**/.npmignore",
+          "!node_modules/**/.eslintrc*",
+          "!node_modules/**/tsconfig.json",
+          "!node_modules/**/*.d.ts",
+          "!node_modules/**/package-lock.json",
+          "!node_modules/**/yarn.lock",
+          "!node_modules/**/pnpm-lock.yaml",
+          "!node_modules/nodemon/**",
+          "!node_modules/pstree.remy/**",
+          "!.git/**",
+          "!.gitignore",
+          "!scripts/**",
+          "!*.log",
+          "!package-lock.json",
+          "!yarn.lock",
+          "!pnpm-lock.yaml",
+          "!backend.log"
+        ]
+      },
+      {
+        "from": "../zk-frontend/dist",
+        "to": "zk-frontend-dist"
+      },
+      {
+        "from": "node-portable",
+        "to": "node-portable",
+        "filter": ["node.exe", "*.dll", "*.node"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Asistencias Galileo",
+      "perMachine": false,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "asar": true,
+    "compression": "normal",
+    "artifactName": "${productName}-Setup-${version}.${ext}"
+  }
+}
