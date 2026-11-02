@@ -11,3 +11,4 @@ zk-desktop
 zk-backend/.env
 zk-frontend/.env
 zk-backend/index.js.bak
+/api
