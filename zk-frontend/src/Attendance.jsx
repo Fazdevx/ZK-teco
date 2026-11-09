@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { toSchool, formatSchoolTime, formatSchoolDate, formatSchoolDateTime, schoolDayKey, renderSchoolDateStr, loadSchoolOffset } from './lib/schoolTime';
+import { formatSchoolTime, formatSchoolDate, loadSchoolOffset } from './lib/schoolTime';
 
 import { API } from './lib/apiBase';
 
@@ -30,68 +30,7 @@ const GRADE_COLORS = {
   'General': 'bg-slate-50 text-slate-600 border-slate-200/60'
 };
 
-function DayEditorList({ dayLoading, dayLogs, dayTimeEdits, setDayTimeEdits, toTimeStr, daySavingId, saveDayTime, removeLog, dayEditor, newTime, setNewTime, addDayTime, addingTime, punchLabels }) {
-  return (
-    <div className="px-6 py-4 max-h-[55vh] overflow-auto">
-      {dayLoading ? (
-        <div className="flex items-center justify-center py-10 gap-3 text-slate-400 text-sm">
-          <div className="w-6 h-6 rounded-full border-2 border-slate-200 border-t-orange-500 animate-spin"></div>
-          Cargando marcaciones del día...
-        </div>
-      ) : dayLogs.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-sm font-semibold text-slate-600">Sin marcaciones este día</p>
-          <p className="text-xs text-slate-400 mt-1">Agrega la primera hora abajo (ej. entrada 07:30).</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {dayLogs.map((log, idx) => {
-            const current = dayTimeEdits[log.id] ?? toTimeStr(log.check_time);
-            const changed = current !== toTimeStr(log.check_time);
-            return (
-              <div key={log.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${changed ? 'border-orange-300 bg-orange-50/60' : 'border-slate-200 bg-slate-50/60'}`}>
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 text-white flex items-center justify-center text-xs font-bold shrink-0">{idx + 1}</div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-bold text-slate-700">{punchLabels[log.punch_label] || log.punch_label}</span>
-                  {log.isDuplicate && (
-                    <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200/60 rounded-full px-2 py-0.5 w-fit">⚠ duplicada</span>
-                  )}
-                  <span className="text-[11px] text-slate-400">Registrado: {toTimeStr(log.check_time)}{log.status === 'late' && log.lateMinutes ? ` • tarde +${log.lateMinutes} min` : log.status === 'late' ? ' • tarde' : log.status === 'absent' ? ' • inasistencia (marcó muy tarde)' : ' • a tiempo'}</span>
-                </div>
-                <input type="time" value={current}
-                  onChange={e => setDayTimeEdits(p => ({ ...p, [log.id]: e.target.value }))}
-                  className="ml-auto px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-mono font-semibold outline-none focus:border-orange-400" />
-                <button onClick={() => saveDayTime(log)} disabled={!changed || daySavingId === log.id}
-                  className="px-3 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-orange-600 disabled:opacity-40 shrink-0">
-                  {daySavingId === log.id ? '...' : 'Guardar'}
-                </button>
-                <button onClick={() => removeLog({ ...log, user_name: dayEditor.userName })}
-                  title="Eliminar esta marcación"
-                  className="w-8 h-8 rounded-lg bg-red-50 text-red-600 border border-red-100 flex items-center justify-center hover:bg-red-100 shrink-0">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="mt-4 pt-4 border-t border-slate-100">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Agregar marcación este día</p>
-        <div className="flex items-center gap-2">
-          <input type="time" value={newTime} onChange={e => setNewTime(e.target.value)}
-            className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-semibold outline-none focus:border-orange-400" />
-          <button onClick={addDayTime} disabled={addingTime || !newTime}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-500 to-emerald-600 disabled:opacity-50 shrink-0">
-            {addingTime ? 'Agregando...' : '+ Agregar'}
-          </button>
-        </div>
-        <p className="text-[11px] text-slate-400 mt-2">La 1ª marca del día define si llega tarde (límite + tolerancia de Ajustes).</p>
-      </div>
-    </div>
-  );
-}
-
-export default function Attendance({ setError, setSuccess }) {
+export default function Attendance({ setError }) {
   const [data, setData] = useState([]);
   const [users, setUsers] = useState({});
   const [grades, setGrades] = useState([]);
@@ -100,34 +39,11 @@ export default function Attendance({ setError, setSuccess }) {
   const [selectedGrades, setSelectedGrades] = useState([]); // [] = todos
   const [showGradeMenu, setShowGradeMenu] = useState(false);
 
-  // ── Admin (editar asistencias) ──
-  const [isAdmin, setIsAdmin] = useState(() => !!sessionStorage.getItem('zk_admin'));
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminPass, setAdminPass] = useState('');
-  const [adminChecking, setAdminChecking] = useState(false);
-  // Editor por día: persona + fecha -> lista de marcaciones del día
-  const [dayEditor, setDayEditor] = useState(null); // { userId, userName, grade, date }
-  const [dayLogs, setDayLogs] = useState([]);
-  const [dayLoading, setDayLoading] = useState(false);
-  const [dayTimeEdits, setDayTimeEdits] = useState({}); // { logId: 'HH:MM' }
-  const [daySavingId, setDaySavingId] = useState(null);
-  const [newTime, setNewTime] = useState('');
-  const [addingTime, setAddingTime] = useState(false);
-
-  const PUNCH_LABELS = { entry: 'Entrada', lunch_out: 'Salida a refrigerio', lunch_in: 'Regreso de refrigerio', exit: 'Salida final' };
-
-  const toTimeStr = (iso) => {
-    const d = toSchool(iso);
-    if (!d) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  };
-
-  const fmtDateLong = (yyyyMmDd) => {
-    try {
-      return renderSchoolDateStr(yyyyMmDd, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    } catch { return yyyyMmDd; }
-  };
+  const filters = [
+    { key: 'today', label: 'Hoy' },
+    { key: 'week', label: '7 días' },
+    { key: 'all', label: 'Todo' },
+  ];
 
   const buildParams = () => {
     const params = new URLSearchParams({ filter });
@@ -174,153 +90,6 @@ export default function Attendance({ setError, setSuccess }) {
     : selectedGrades.length === 1
       ? selectedGrades[0]
       : `${selectedGrades.length} seleccionados`;
-
-  // ── Admin: verificar contraseña ──
-  const adminHeaders = () => ({
-    'Content-Type': 'application/json',
-    'x-admin-password': sessionStorage.getItem('zk_admin_pass') || ''
-  });
-
-  // Guardamos la clave en memoria de sesión para reenviarla en PUT/DELETE.
-  // (Se guarda solo si el verify fue exitoso.)
-  const verifyAdminWithStore = async (e) => {
-    e?.preventDefault();
-    if (!adminPass) return;
-    setAdminChecking(true);
-    try {
-      const r = await (await fetch(`${API}/admin/verify`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPass })
-      })).json();
-      if (!r.success) throw new Error(r.message || 'Contraseña incorrecta');
-      sessionStorage.setItem('zk_admin', '1');
-      sessionStorage.setItem('zk_admin_pass', adminPass);
-      setIsAdmin(true);
-      setShowAdminModal(false);
-      setAdminPass('');
-      setSuccess?.('Modo administrador activado');
-    } catch (err) { setError(err.message); }
-    finally { setAdminChecking(false); }
-  };
-
-  const openEdit = (log) => {
-    // Editor por día: parte de la fecha de la marcación y carga TODAS
-    // las marcaciones de esa persona en ese día para editarlas por hora.
-    // La fecha del día se toma en la zona del colegio, no en la local de la PC.
-    const dateStr = schoolDayKey(log.check_time);
-    openDayEditor({
-      userId: log.user_id,
-      userName: log.user_name || users[log.user_id] || `#${log.user_id}`,
-      grade: log.grade || 'General',
-      date: dateStr
-    });
-  };
-
-  const openDayEditor = async (info) => {
-    setDayEditor(info);
-    setDayLogs([]);
-    setDayTimeEdits({});
-    setNewTime('');
-    setDayLoading(true);
-    try {
-      const r = await (await fetch(`${API}/data/attendance/day?userId=${info.userId}&date=${info.date}`)).json();
-      if (!r.success) throw new Error(r.message);
-      const logs = r.data.logs || [];
-      setDayLogs(logs);
-      const edits = {};
-      logs.forEach(l => { edits[l.id] = toTimeStr(l.check_time); });
-      setDayTimeEdits(edits);
-      // Sugerir próxima hora para agregar (última + 1 min o 07:30 si vacío)
-      if (logs.length > 0) {
-        const last = toSchool(logs[logs.length - 1].check_time);
-        last.setUTCMinutes(last.getUTCMinutes() + 1);
-        const pad = (n) => String(n).padStart(2, '0');
-        setNewTime(`${pad(last.getUTCHours())}:${pad(last.getUTCMinutes())}`);
-      } else {
-        setNewTime('07:30');
-      }
-    } catch (err) { setError(err.message); }
-    finally { setDayLoading(false); }
-  };
-
-  const reloadDay = async () => {
-    if (!dayEditor) return;
-    setDayLoading(true);
-    try {
-      const r = await (await fetch(`${API}/data/attendance/day?userId=${dayEditor.userId}&date=${dayEditor.date}`)).json();
-      if (!r.success) throw new Error(r.message);
-      const logs = r.data.logs || [];
-      setDayLogs(logs);
-      const edits = {};
-      logs.forEach(l => { edits[l.id] = toTimeStr(l.check_time); });
-      setDayTimeEdits(edits);
-    } catch (err) { setError(err.message); }
-    finally { setDayLoading(false); }
-  };
-
-  const saveDayTime = async (log) => {
-    const hhmm = dayTimeEdits[log.id];
-    if (!hhmm || !dayEditor) return;
-    setDaySavingId(log.id);
-    try {
-      const r = await (await fetch(`${API}/data/attendance/${log.id}`, {
-        method: 'PUT',
-        headers: adminHeaders(),
-        body: JSON.stringify({ check_time: `${dayEditor.date}T${hhmm}` })
-      })).json();
-      if (!r.success) throw new Error(r.message);
-      setSuccess?.(`Hora actualizada a ${hhmm}`);
-      await reloadDay();
-      loadData();
-    } catch (err) { setError(err.message); }
-    finally { setDaySavingId(null); }
-  };
-
-  const addDayTime = async () => {
-    if (!newTime || !dayEditor) return;
-    setAddingTime(true);
-    try {
-      const r = await (await fetch(`${API}/data/attendance`, {
-        method: 'POST',
-        headers: adminHeaders(),
-        body: JSON.stringify({ userId: dayEditor.userId, check_time: `${dayEditor.date}T${newTime}` })
-      })).json();
-      if (!r.success) throw new Error(r.message);
-      setSuccess?.(`Marcación ${newTime} agregada`);
-      setNewTime('');
-      await reloadDay();
-      loadData();
-    } catch (err) { setError(err.message); }
-    finally { setAddingTime(false); }
-  };
-
-  const removeLog = async (log) => {
-    if (!confirm(`¿Eliminar la marcación de ${log.user_name || users[log.user_id]} (${formatSchoolDateTime(log.check_time)})?`)) return;
-    try {
-      const r = await (await fetch(`${API}/data/attendance/${log.id}`, {
-        method: 'DELETE',
-        headers: adminHeaders()
-      })).json();
-      if (!r.success) throw new Error(r.message);
-      setSuccess?.('Registro eliminado');
-      if (dayEditor) await reloadDay();
-      loadData();
-    } catch (err) { setError(err.message); }
-  };
-
-  const logoutAdmin = () => {
-    sessionStorage.removeItem('zk_admin');
-    sessionStorage.removeItem('zk_admin_pass');
-    setIsAdmin(false);
-    setDayEditor(null);
-    setDayLogs([]);
-  };
-
-  const filters = [
-    { key: 'today', label: 'Hoy' },
-    { key: 'week', label: '7 días' },
-    { key: 'all', label: 'Todo' },
-  ];
 
   return (
     <div className="animate-fade-in">
@@ -378,21 +147,6 @@ export default function Attendance({ setError, setSuccess }) {
             </div>
           )}
 
-          {/* Admin button */}
-          {!isAdmin ? (
-            <button onClick={() => setShowAdminModal(true)}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-white border border-slate-200 shadow-sm hover:border-orange-300 hover:text-orange-600 transition-colors">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              Admin
-            </button>
-          ) : (
-            <button onClick={logoutAdmin} title="Salir del modo administrador"
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 shadow-sm hover:bg-emerald-100 transition-colors">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Admin ✓ (salir)
-            </button>
-          )}
-
           {/* Time range filter */}
           <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-slate-200">
             {filters.map(f => (
@@ -426,9 +180,6 @@ export default function Attendance({ setError, setSuccess }) {
                   {['Usuario', 'Grado / Área', 'Fecha', 'Hora', 'Tipo', 'Estado'].map(h => (
                     <th key={h} className="text-left px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">{h}</th>
                   ))}
-                  {isAdmin && (
-                    <th className="text-left px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Acciones</th>
-                  )}
                 </tr>
               </thead>
               <tbody>
@@ -478,20 +229,6 @@ export default function Attendance({ setError, setSuccess }) {
                           </span>
                         ) : <span className="text-xs text-slate-300">—</span>}
                       </td>
-                      {isAdmin && (
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => openEdit(log)} title="Editar fecha/hora"
-                              className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center hover:bg-blue-100 transition-colors">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                            </button>
-                            <button onClick={() => removeLog(log)} title="Eliminar marcación"
-                              className="w-8 h-8 rounded-lg bg-red-50 text-red-600 border border-red-100 flex items-center justify-center hover:bg-red-100 transition-colors">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                          </div>
-                        </td>
-                      )}
                     </tr>
                   );
                 })}
@@ -508,83 +245,6 @@ export default function Attendance({ setError, setSuccess }) {
           </div>
         )}
       </div>
-
-      {showAdminModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <form onSubmit={verifyAdminWithStore} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Acceso administrador</h2>
-                <p className="text-xs text-slate-400">Contraseña para editar asistencias</p>
-              </div>
-            </div>
-            <input type="password" autoFocus value={adminPass}
-              onChange={e => setAdminPass(e.target.value)}
-              placeholder="Contraseña de administrador"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/10" />
-            <div className="flex items-center gap-3 mt-4">
-              <button type="button" onClick={() => { setShowAdminModal(false); setAdminPass(''); }}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">Cancelar</button>
-              <button type="submit" disabled={adminChecking || !adminPass}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-orange-500 to-orange-600 disabled:opacity-50">
-                {adminChecking ? 'Verificando...' : 'Ingresar'}
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-3 text-center">Por defecto: admin123 (cámbiala en Ajustes)</p>
-          </form>
-        </div>
-      )}
-
-      {dayEditor && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="px-6 pt-5 pb-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-bold leading-tight">{dayEditor.userName}</h2>
-                  <p className="text-xs text-white/80">{dayEditor.grade} • ID {dayEditor.userId}</p>
-                </div>
-                <button onClick={() => setDayEditor(null)}
-                  className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 text-lg leading-none">×</button>
-              </div>
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-white/80 uppercase">Fecha</span>
-                <input type="date" value={dayEditor.date}
-                  onChange={e => { if (e.target.value) openDayEditor({ ...dayEditor, date: e.target.value }); }}
-                  className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 bg-white outline-none" />
-                <span className="text-xs text-white/90 capitalize">{fmtDateLong(dayEditor.date)}</span>
-              </div>
-            </div>
-            <DayEditorList
-              dayLoading={dayLoading}
-              dayLogs={dayLogs}
-              dayTimeEdits={dayTimeEdits}
-              setDayTimeEdits={setDayTimeEdits}
-              toTimeStr={toTimeStr}
-              daySavingId={daySavingId}
-              saveDayTime={saveDayTime}
-              removeLog={removeLog}
-              dayEditor={dayEditor}
-              newTime={newTime}
-              setNewTime={setNewTime}
-              addDayTime={addDayTime}
-              addingTime={addingTime}
-              punchLabels={PUNCH_LABELS}
-            />
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center gap-3">
-              <button onClick={() => setDayEditor(null)}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100">Cerrar</button>
-              <button onClick={() => { setDayEditor(null); loadData(); }}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-orange-500 to-orange-600">
-                Listo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

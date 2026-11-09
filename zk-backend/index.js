@@ -400,14 +400,6 @@ function getLocalExcuses() {
   } catch { return []; }
 }
 
-function saveLocalExcuses(list) {
-  try {
-    fs.writeFileSync(USER_EXCUSES_PATH, JSON.stringify(list.map(excuseToApi), null, 2));
-  } catch (err) {
-    console.error('Error guardando justificaciones:', err.message);
-  }
-}
-
 async function loadExcusesFromDb() {
   const { data, error } = await supabase
     .from('attendance_excuses')
@@ -445,45 +437,6 @@ function excuseIndex(list) {
     idx[e.userId][e.day] = e;
   });
   return idx;
-}
-
-async function upsertExcuse(excuse) {
-  excuseCache = await getExcusesAsync();
-  const others = excuseCache.filter(e => !(e.userId === excuse.userId && e.day === excuse.day));
-  const next = [...others, excuse];
-  try {
-    const { error } = await supabase.from('attendance_excuses')
-      .upsert({
-        user_id: excuse.userId,
-        day: excuse.day,
-        excuse_type: excuse.type,
-        document: excuse.document || null,
-        note: excuse.note || null,
-        covers_late: excuse.coversLate,
-        created_at: excuse.createdAt
-      }, { onConflict: 'user_id,day' });
-    if (error) throw error;
-  } catch (err) {
-    console.error('[Backend] Error guardando justificación en Supabase:', err.message);
-  }
-  excuseCache = next;
-  saveLocalExcuses(next);
-  return excuse;
-}
-
-async function removeExcuse(userId, day) {
-  excuseCache = await getExcusesAsync();
-  const next = excuseCache.filter(e => !(e.userId === userId && e.day === day));
-  try {
-    const { error } = await supabase.from('attendance_excuses')
-      .delete().eq('user_id', userId).eq('day', day);
-    if (error) throw error;
-  } catch (err) {
-    console.error('[Backend] Error eliminando justificación de Supabase:', err.message);
-  }
-  excuseCache = next;
-  saveLocalExcuses(next);
-  return next.length;
 }
 
 // ── User Cache ──
@@ -613,16 +566,8 @@ const DEFAULT_SETTINGS = {
   // Ej.: 1 => dos marcas a menos de 60s se agrupan (se conserva la primera).
   doubleTapToleranceMinutes: 1,
   autoSync: false,
-  autoSyncInterval: 5,
-  adminPassword: 'admin123'
+  autoSyncInterval: 5
 };
-
-function checkAdminPassword(req) {
-  const settings = getSettings();
-  const expected = settings.adminPassword || 'admin123';
-  const provided = req.headers['x-admin-password'] || req.body?.adminPassword || req.query?.adminPassword;
-  return provided && String(provided) === String(expected);
-}
 
 // Settings: Supabase (`app_settings`, fila id=1) es la fuente de verdad cuando
 // la tabla existe; si no, se usa settings.json local. En Vercel el archivo vive
@@ -661,27 +606,6 @@ async function ensureSettingsLoaded() {
   return getSettings();
 }
 
-async function saveSettings(s) {
-  settingsCache = { ...DEFAULT_SETTINGS, ...s };
-  setSchoolTzOffset(settingsCache.tzOffsetMinutes ?? -300);
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settingsCache, null, 2));
-  } catch (err) {
-    console.error('[Backend] No se pudo guardar settings.json:', err.message);
-  }
-  settingsDbChecked = true;
-  try {
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert({ id: 1, data: settingsCache, updated_at: new Date().toISOString() }, { onConflict: 'id' });
-    if (error) throw error;
-  } catch (err) {
-    console.error('[Backend] No se pudo guardar app_settings en Supabase:', err.message);
-  }
-  return settingsCache;
-}
-
 function getIncidents() {
   try { return JSON.parse(fs.readFileSync(INCIDENTS_PATH, 'utf8')) || []; }
   catch { return []; }
@@ -716,15 +640,9 @@ setSchoolTzOffset((getSettings().tzOffsetMinutes ?? -300));
 
 
 // ──────────────────────────────────────────────
-// SETTINGS
+// SETTINGS (solo lectura: la configuración vive en settings.json / app_settings)
 // ──────────────────────────────────────────────
 app.get('/api/settings', (req, res) => res.json({ success: true, data: getSettings() }));
-app.post('/api/settings', async (req, res) => {
-  const updated = { ...getSettings(), ...req.body };
-  await saveSettings(updated);
-  restartAutoSync(updated);
-  res.json({ success: true, data: updated });
-});
 
 // ── Auto-sync ──
 let syncTimer = null;
@@ -1715,172 +1633,6 @@ app.delete('/api/device/users/:id', async (req, res) => {
 });
 
 // ──────────────────────────────────────────────
-// ADMIN: verificar contraseña de administrador
-// ──────────────────────────────────────────────
-app.post('/api/admin/verify', (req, res) => {
-  const { password } = req.body || {};
-  const settings = getSettings();
-  const expected = settings.adminPassword || 'admin123';
-  if (password && String(password) === String(expected)) {
-    return res.json({ success: true, message: 'Acceso de administrador concedido' });
-  }
-  return res.status(401).json({ success: false, message: 'Contraseña de administrador incorrecta' });
-});
-
-// ──────────────────────────────────────────────
-// DATA: marcaciones de un usuario en un día (para editor admin)
-// GET /api/data/attendance/day?userId=N&date=YYYY-MM-DD
-// ──────────────────────────────────────────────
-app.get('/api/data/attendance/day', async (req, res) => {
-  try {
-    const userId = parseInt(req.query.userId);
-    const dateStr = req.query.date;
-    if (!userId) return res.status(400).json({ success: false, message: 'userId es requerido' });
-    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      return res.status(400).json({ success: false, message: 'date es requerido (YYYY-MM-DD)' });
-    }
-    const settings = getSettings();
-    const from = dateStrToSchoolInstant(dateStr, 0, 0);
-    const to = dateStrToSchoolInstant(dateStr, 23, 59, 59);
-    if (isNaN(from.getTime())) return res.status(400).json({ success: false, message: 'Fecha inválida' });
-
-    const { data: logs, error } = await supabase.from('attendance_logs')
-      .select('id, user_id, check_time')
-      .eq('user_id', userId)
-      .gte('check_time', from.toISOString())
-      .lte('check_time', to.toISOString())
-      .order('check_time', { ascending: true });
-    if (error) throw error;
-
-    await userCache.get();
-    const userMap = userCache.getMap();
-    const gradeMap = await userCache.getGradeMap();
-    const sched = await getUserSchedule(userId);
-    const sorted = (logs || []).slice().sort((a, b) => new Date(a.check_time) - new Date(b.check_time));
-    // Agrupar dobles marcaciones: la etiqueta se asigna según el orden efectivo
-    // y las huellas repetidas se marcan como duplicadas para que el admin las vea.
-    const groups = groupDoubleTaps(sorted, settings);
-    const collapsed = groups.map(g => g[0]);
-    // Estado/minutos definidos SOLO por la primera marca del día (ingreso),
-    // saltando marcas de madrugada sospechosas (otra caja/zona horaria errada).
-    const firstPunchDate = (collapsed.length > 0 ? firstEffectivePunch(collapsed).first : null);
-    const firstPunchTime = firstPunchDate ? new Date(firstPunchDate.check_time) : null;
-    const dayStatus = firstPunchTime
-      ? (sched ? getUserDayStatus(firstPunchTime, sched, settings) : getDayStatus(firstPunchTime, settings))
-      : null;
-    const enriched = sorted.map((log, idx) => {
-      let groupIdx = 0;
-      let isDuplicate = false;
-      for (let gi = 0; gi < groups.length; gi++) {
-        const pos = groups[gi].findIndex(l => l.id === log.id);
-        if (pos >= 0) { groupIdx = gi; isDuplicate = pos > 0; break; }
-      }
-      return {
-        ...log,
-        punch_label: getPunchLabel(collapsed, groupIdx),
-        status: dayStatus,
-        lateMinutes: idx === 0 && firstPunchTime ? (sched ? getUserLateMinutes(firstPunchTime, sched, settings) : getLateMinutes(firstPunchTime, settings)) : 0,
-        isDuplicate
-      };
-    });
-
-    res.json({
-      success: true,
-      data: {
-        user_id: userId,
-        name: userMap[userId] || `#${userId}`,
-        grade: gradeMap[userId] || 'General',
-        date: dateStr,
-        logs: enriched
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ──────────────────────────────────────────────
-// DATA: crear una marcación manual (requiere admin)
-// POST /api/data/attendance  body: { userId, check_time, adminPassword }
-// ──────────────────────────────────────────────
-app.post('/api/data/attendance', async (req, res) => {
-  try {
-    if (!checkAdminPassword(req)) {
-      return res.status(401).json({ success: false, message: 'Se requiere contraseña de administrador' });
-    }
-    const userId = parseInt(req.body?.userId);
-    const { check_time } = req.body || {};
-    if (!userId) return res.status(400).json({ success: false, message: 'userId es requerido' });
-    if (!check_time) return res.status(400).json({ success: false, message: 'check_time es requerido (YYYY-MM-DDTHH:mm)' });
-    // La entrada es hora LOCAL del colegio (lo que ve el admin), NO hora de la
-    // PC servidor: la convertimos a instante UTC con la zona del colegio.
-    const m = String(check_time).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-    if (!m) return res.status(400).json({ success: false, message: 'check_time debe ser YYYY-MM-DDTHH:mm' });
-    const dt = dateStrToSchoolInstant(`${m[1]}-${m[2]}-${m[3]}`, parseInt(m[4], 10), parseInt(m[5], 10));
-
-    const { data: user } = await supabase.from('users').select('id').eq('id', userId).maybeSingle();
-    if (!user) return res.status(404).json({ success: false, message: `No existe el usuario ${userId}` });
-
-    const { data, error } = await supabase
-      .from('attendance_logs')
-      .insert({ user_id: userId, check_time: dt.toISOString() })
-      .select('id, user_id, check_time');
-    if (error) throw error;
-    res.json({ success: true, message: 'Marcación agregada', data: data?.[0] || null });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ──────────────────────────────────────────────
-// DATA: editar / eliminar un registro de asistencia (requiere admin)
-// ──────────────────────────────────────────────
-// PUT /api/data/attendance/:id  body: { check_time: ISO, adminPassword }
-// DELETE /api/data/attendance/:id  (adminPassword por header x-admin-password, body o query)
-app.put('/api/data/attendance/:id', async (req, res) => {
-  try {
-    if (!checkAdminPassword(req)) {
-      return res.status(401).json({ success: false, message: 'Se requiere contraseña de administrador' });
-    }
-    const id = parseInt(req.params.id);
-    const { check_time } = req.body || {};
-    if (!id) return res.status(400).json({ success: false, message: 'ID inválido' });
-    if (!check_time) return res.status(400).json({ success: false, message: 'check_time es requerido (YYYY-MM-DDTHH:mm)' });
-    // La entrada es hora LOCAL del colegio (lo que ve el admin), la convertimos
-    // a instante UTC con la zona del colegio, no con la de la PC servidor.
-    const m = String(check_time).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-    if (!m) return res.status(400).json({ success: false, message: 'check_time debe ser YYYY-MM-DDTHH:mm' });
-    const dt = dateStrToSchoolInstant(`${m[1]}-${m[2]}-${m[3]}`, parseInt(m[4], 10), parseInt(m[5], 10));
-
-    const { data, error } = await supabase
-      .from('attendance_logs')
-      .update({ check_time: dt.toISOString() })
-      .eq('id', id)
-      .select('id, user_id, check_time');
-    if (error) throw error;
-    if (!data || data.length === 0) return res.status(404).json({ success: false, message: 'Registro no encontrado' });
-    res.json({ success: true, message: 'Asistencia actualizada', data: data[0] });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.delete('/api/data/attendance/:id', async (req, res) => {
-  try {
-    if (!checkAdminPassword(req)) {
-      return res.status(401).json({ success: false, message: 'Se requiere contraseña de administrador' });
-    }
-    const id = parseInt(req.params.id);
-    if (!id) return res.status(400).json({ success: false, message: 'ID inválido' });
-    const { error } = await supabase.from('attendance_logs').delete().eq('id', id);
-    if (error) throw error;
-    res.json({ success: true, message: 'Registro eliminado' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ──────────────────────────────────────────────
 // DATA: user calendar (month view)
 // ──────────────────────────────────────────────
 app.get('/api/data/users/:id/calendar', async (req, res) => {
@@ -2136,53 +1888,6 @@ app.get('/api/data/excuses', async (req, res) => {
       types: EXCUSE_TYPES.map(t => ({ value: t, label: EXCUSE_LABELS[t] })),
       shifts: SHIFTS.map(s => ({ value: s, label: SHIFT_LABELS[s] }))
     });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Registra/actualiza la justificación de una persona para un día.
-app.post('/api/data/excuses', async (req, res) => {
-  try {
-    if (!checkAdminPassword(req)) {
-      return res.status(401).json({ success: false, message: 'Se requiere contraseña de administrador' });
-    }
-    const { userId, date, type, document, note, coversLate } = req.body || {};
-    const uid = parseInt(userId);
-    if (!Number.isInteger(uid)) return res.status(400).json({ success: false, message: 'userId inválido' });
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
-      return res.status(400).json({ success: false, message: 'date inválida (YYYY-MM-DD)' });
-    }
-    const excuse = normalizeExcuse({
-      userId: uid,
-      day: date,
-      type,
-      document,
-      note,
-      coversLate: coversLate === undefined ? true : coversLate,
-      createdAt: new Date().toISOString()
-    });
-    if (!excuse) return res.status(400).json({ success: false, message: 'Justificación inválida' });
-    const saved = await upsertExcuse(excuse);
-    res.json({ success: true, data: excuseToApi(saved), message: `Justificación registrada: ${getExcuseLabel(saved.type)}` });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Quita la justificación de una persona para un día.
-app.delete('/api/data/excuses', async (req, res) => {
-  try {
-    if (!checkAdminPassword(req)) {
-      return res.status(401).json({ success: false, message: 'Se requiere contraseña de administrador' });
-    }
-    const uid = parseInt(req.query.userId);
-    const day = String(req.query.date || '');
-    if (!Number.isInteger(uid) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-      return res.status(400).json({ success: false, message: 'userId y date (YYYY-MM-DD) son requeridos' });
-    }
-    await removeExcuse(uid, day);
-    res.json({ success: true, message: 'Justificación eliminada' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

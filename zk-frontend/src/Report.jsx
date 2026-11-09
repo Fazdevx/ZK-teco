@@ -138,11 +138,6 @@ export default function Report({ setError }) {
     selectedUsers: {} // Map<user_id, bool> — per-row inclusion in the report
   });
   const [excuses, setExcuses] = useState([]);
-  const [excuseTypes, setExcuseTypes] = useState([]);
-  const [excuseForm, setExcuseForm] = useState({ userId: '', date: '', type: 'licencia', document: '', note: '', coversLate: true });
-  const [excuseOpen, setExcuseOpen] = useState(false);
-  const [savingExcuse, setSavingExcuse] = useState(false);
-  const [adminPass, setAdminPass] = useState(() => sessionStorage.getItem('zk_admin_pass') || '');
   const printRef = useRef();
 
   useEffect(() => {
@@ -186,37 +181,8 @@ export default function Report({ setError }) {
       const r = await (await fetch(`${API}/data/excuses?${params}`)).json();
       if (r.success) {
         setExcuses(r.data || []);
-        if ((r.types || []).length > 0) setExcuseTypes(r.types);
       }
     } catch { /* sin justificaciones */ }
-  };
-
-  const saveExcuse = async () => {
-    if (!excuseForm.userId || !excuseForm.date) { setError('Selecciona la persona y la fecha'); return; }
-    setSavingExcuse(true);
-    try {
-      const r = await (await fetch(`${API}/data/excuses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPass },
-        body: JSON.stringify(excuseForm)
-      })).json();
-      if (!r.success) { setError(r.message); return; }
-      setExcuseForm(f => ({ ...f, document: '', note: '' }));
-      setExcuseOpen(false);
-      await Promise.all([loadExcuses(filters), fetchReport()]);
-    } catch { setError('Error al registrar la justificación'); }
-    finally { setSavingExcuse(false); }
-  };
-
-  const deleteExcuse = async (userId, day) => {
-    try {
-      const r = await (await fetch(`${API}/data/excuses?userId=${userId}&date=${day}`, {
-        method: 'DELETE',
-        headers: { 'x-admin-password': adminPass }
-      })).json();
-      if (!r.success) { setError(r.message); return; }
-      await Promise.all([loadExcuses(filters), fetchReport()]);
-    } catch { setError('Error al eliminar la justificación'); }
   };
 
   // Initial load on mount — fetch once
@@ -1522,7 +1488,7 @@ export default function Report({ setError }) {
         </div>
       </div>
 
-      {/* Justificaciones (licencias, permisos, comisiones) — RR.HH. */}
+      {/* Justificaciones (licencias, permisos, comisiones) — solo lectura */}
       <div className="bg-white rounded-2xl p-5 shadow-lg shadow-slate-200/50 border border-slate-100 mb-5">
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
@@ -1530,66 +1496,7 @@ export default function Report({ setError }) {
           </div>
           <h3 className="text-sm font-bold text-slate-700">Justificaciones del período</h3>
           <span className="text-[11px] text-slate-400">Licencias, permisos, comisiones, vacaciones, remoto, onisión, capacitación u otro</span>
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={() => setExcuseOpen(v => !v)}
-              className="px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] transition-all">
-              {excuseOpen ? 'Cancelar' : '+ Registrar justificación'}
-            </button>
-          </div>
         </div>
-
-        {excuseOpen && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 mb-4 rounded-xl bg-emerald-50/60 border border-emerald-100">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Persona</label>
-              <select value={excuseForm.userId} onChange={e => setExcuseForm(f => ({ ...f, userId: e.target.value }))}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-400">
-                <option value="">Seleccionar…</option>
-                {(report || []).map(u => <option key={u.user_id} value={u.user_id}>{u.name} ({getAreaOf(u)})</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Fecha</label>
-              <input type="date" min={filters.from} max={filters.to} value={excuseForm.date} onChange={e => setExcuseForm(f => ({ ...f, date: e.target.value }))}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-400" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tipo</label>
-              <select value={excuseForm.type} onChange={e => setExcuseForm(f => ({ ...f, type: e.target.value }))}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-400">
-                {(excuseTypes.length > 0 ? excuseTypes : [{ value: 'licencia', label: 'Licencia' }]).map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Documento (opcional)</label>
-              <input type="text" maxLength={80} value={excuseForm.document} placeholder="Ej. RES-2026-014" onChange={e => setExcuseForm(f => ({ ...f, document: e.target.value }))}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-400" />
-            </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Detalle (opcional)</label>
-              <input type="text" maxLength={300} value={excuseForm.note} placeholder="Ej. Comisión en la dirección" onChange={e => setExcuseForm(f => ({ ...f, note: e.target.value }))}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-400" />
-            </div>
-            <div className="flex items-end gap-3 flex-wrap">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
-                <input type="checkbox" checked={excuseForm.coversLate} onChange={e => setExcuseForm(f => ({ ...f, coversLate: e.target.checked }))}
-                  className="w-4 h-4 accent-emerald-600 cursor-pointer" />
-                También exonera la tardanza de ese día
-              </label>
-            </div>
-            <div className="flex items-end gap-2 flex-wrap">
-              <input type="password" value={adminPass} placeholder="Contraseña de administrador" onChange={e => setAdminPass(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-400 w-44" />
-              <button onClick={() => { sessionStorage.setItem('zk_admin', '1'); sessionStorage.setItem('zk_admin_pass', adminPass); saveExcuse(); }}
-                disabled={savingExcuse || !adminPass}
-                className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.97] transition-all">
-                {savingExcuse ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-          </div>
-        )}
 
         {getExcusesInRange().length > 0 ? (
           <div className="overflow-x-auto">
@@ -1602,8 +1509,7 @@ export default function Report({ setError }) {
                   <th className="py-2 pr-3">Tipo</th>
                   <th className="py-2 pr-3">Documento</th>
                   <th className="py-2 pr-3">Cubre tarde.</th>
-                  <th className="py-2 pr-3">Detalle</th>
-                  <th className="py-2"></th>
+                  <th className="py-2">Detalle</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1615,18 +1521,14 @@ export default function Report({ setError }) {
                     <td className="py-2 pr-3"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700">{x.label || x.type}</span></td>
                     <td className="py-2 pr-3">{x.document || '—'}</td>
                     <td className="py-2 pr-3">{x.coversLate ? 'Sí' : '—'}</td>
-                    <td className="py-2 pr-3 text-slate-400">{x.note || '—'}</td>
-                    <td className="py-2 text-right">
-                      <button onClick={() => deleteExcuse(x.userId, x.day)} title="Eliminar justificación"
-                        className="px-2 py-1 rounded-lg text-[11px] font-semibold text-red-600 hover:bg-red-50 active:scale-95 transition-all">Eliminar</button>
-                    </td>
+                    <td className="py-2 text-slate-400">{x.note || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <p className="text-sm text-slate-400 text-center py-6">Sin justificaciones registradas entre ${formatAbsentDate(filters.from)} y ${formatAbsentDate(filters.to)}.</p>
+          <p className="text-sm text-slate-400 text-center py-6">Sin justificaciones registradas en el período seleccionado.</p>
         )}
       </div>
 
@@ -1937,7 +1839,7 @@ export default function Report({ setError }) {
                       )}
                       <td className="px-5 py-4">
                         {(user.reviewDays || 0) > 0 ? (
-                          <span title="Días con doble marcación o más de 4 marcas. Revísalas en Asistencias → modo admin → editar por día."
+                          <span title="Días con doble marcación o más de 4 marcas. Revísalas en Asistencias para verificar las marcaciones del día."
                             className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-200/60">
                             ⚠ {user.reviewDays}
                           </span>
@@ -1965,7 +1867,7 @@ export default function Report({ setError }) {
               <span>⚠</span>
               <span>
                 {getFilteredReport().reduce((s, u) => s + (u.reviewDays || 0), 0)} día(s) con doble marcación o más de 4 marcas.
-                <span className="font-normal text-red-700/80"> Se auto-corrigieron al agruparlas; si ves un caso dudoso, corrígelo en Asistencias → modo admin → editar por día.</span>
+                <span className="font-normal text-red-700/80"> Se auto-corrigieron al agruparlas; si ves un caso dudoso, revísalo en Asistencias comparando con la marcación del dispositivo.</span>
               </span>
             </div>
           )}

@@ -14,6 +14,5 @@
   "saturdayAbsenceAfterHour": 9,
   "saturdayAbsenceAfterMinute": 0,
   "autoSync": true,
-  "autoSyncInterval": 3,
-  "adminPassword": "admin123"
+  "autoSyncInterval": 3
 }
